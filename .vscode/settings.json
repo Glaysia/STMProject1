@@ -1,0 +1,17 @@
+{
+  // Use CMake Presets so VS Code knows the build dir
+  "cmake.useCMakePresets": "always",
+
+  // Let the C/C++ extension get include paths/defines from CMake Tools
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+
+  // Ensure IntelliSense engine is enabled (was reported disabled)
+  "C_Cpp.intelliSenseEngine": "default",
+
+  // Help IntelliSense pick the right toolchain flavor
+  "C_Cpp.default.intelliSenseMode": "gcc-arm",
+  "C_Cpp.default.compilerPath": "/home/harry_lt/.local/share/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc",
+  "files.associations": {
+    "main.h": "c"
+  }
+}
