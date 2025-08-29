@@ -1,0 +1,30 @@
+{
+  // Use CMake Presets so VS Code knows the build dir
+  "cmake.useCMakePresets": "always",
+
+  // Let the C/C++ extension get include paths/defines from CMake Tools
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+
+  // Ensure IntelliSense engine is enabled (was reported disabled)
+  "C_Cpp.intelliSenseEngine": "disabled",
+
+  // Help IntelliSense pick the right toolchain flavor
+  // "C_Cpp.default.intelliSenseMode": "",
+  "C_Cpp.default.compilerPath": "${env:CUBE_BUNDLE_PATH}/gnu-tools-for-stm32/13.3.1+st.9/bin/arm-none-eabi-gcc",
+  "files.associations": {
+    "main.h": "c"
+  },
+  "cmake.cmakePath": "cube-cmake",
+  "cmake.configureArgs": [
+    "-DCMAKE_COMMAND=cube-cmake"
+  ],
+  "cmake.preferredGenerators": [
+    "Ninja"
+  ],
+  "stm32cube-ide-clangd.path": "cube",
+  "stm32cube-ide-clangd.arguments": [
+    "starm-clangd",
+    "--query-driver=${env:CUBE_BUNDLE_PATH}/gnu-tools-for-stm32/13.3.1+st.9/bin/arm-none-eabi-gcc",
+    "--query-driver=${env:CUBE_BUNDLE_PATH}/gnu-tools-for-stm32/13.3.1+st.9/bin/arm-none-eabi-g++"
+  ]
+}
