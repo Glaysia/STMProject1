@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32h5xx_ll_bus.h"
 
 /* USER CODE END Includes */
 
@@ -47,6 +48,10 @@ __IO uint32_t BspButtonState = BUTTON_RELEASED;
 CRC_HandleTypeDef hcrc;
 
 /* USER CODE BEGIN PV */
+/* TIM3 PWM on PC6 (CH1) & PC7 (CH2) - shared frequency, per-channel duty */
+volatile uint32_t pwm_freq_hz = 1000000U;    /* shared frequency (Hz) */
+volatile uint32_t pwm_duty_pc6_pct = 15U;   /* PC6 duty (0..100 %) */
+volatile uint32_t pwm_duty_pc7_pct = 40U;   /* PC7 duty (0..100 %) */
 
 /* USER CODE END PV */
 
@@ -56,6 +61,7 @@ static void MX_GPIO_Init(void);
 static void MX_CRC_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
+static void MX_TIM3_PWM_PC7_Init(void);
 
 /* USER CODE END PFP */
 
@@ -96,6 +102,8 @@ int main(void)
   MX_CRC_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
+  /* Initialize TIM3 PWM on PC7 (TIM3_CH2) at 10 kHz, 50% duty */
+  MX_TIM3_PWM_PC7_Init();
 
   /* USER CODE END 2 */
 
@@ -299,6 +307,87 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* Configure TIM3 to output PWM on PC7 (TIM3_CH2) at 10 kHz, 50% duty */
+static void MX_TIM3_PWM_PC7_Init(void)
+{
+  /* Enable TIM3 peripheral clock */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);
+
+  /* Configure GPIO PC6/PC7 as AF TIM3_CH1/CH2 */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /* Compute PSC/ARR/CCR for requested frequency and duty */
+  uint32_t tim_clk = HAL_RCC_GetPCLK1Freq();
+  uint32_t req_hz = (pwm_freq_hz == 0U) ? 1U : pwm_freq_hz;
+
+  uint32_t presc = 0U;
+  uint64_t N = ((uint64_t)tim_clk + (req_hz / 2U)) / (uint64_t)req_hz; /* rounded divider */
+  if (N < 2ULL) N = 2ULL; /* ensure ARR >= 1 */
+
+  if (N > 65536ULL) {
+    /* Need prescaler so that ARR fits 16-bit */
+    uint64_t div = (N + 65535ULL) / 65536ULL; /* ceil(N/65536) */
+    if (div > 65536ULL) div = 65536ULL;
+    presc = (uint32_t)div - 1U;
+    uint32_t tim_div_clk = tim_clk / (presc + 1U);
+    N = ((uint64_t)tim_div_clk + (req_hz / 2U)) / (uint64_t)req_hz;
+    if (N < 2ULL) N = 2ULL;
+    if (N > 65536ULL) N = 65536ULL;
+  }
+
+  /* If exact 50% requested on any channel, prefer even period ticks for exact 50% */
+  if (((pwm_duty_pc6_pct == 50U) || (pwm_duty_pc7_pct == 50U)) && (N & 1ULL)) {
+    if (N > 2ULL) {
+      N -= 1ULL; /* make even */
+    } else {
+      N = 2ULL;
+    }
+  }
+
+  uint32_t period = (uint32_t)(N - 1ULL);
+  uint32_t ccr1, ccr2;
+  if (pwm_duty_pc6_pct >= 100U) {
+    ccr1 = period + 1U;
+  } else {
+    ccr1 = (uint32_t) (((uint64_t)(period + 1U) * (uint64_t)pwm_duty_pc6_pct + 50ULL) / 100ULL);
+  }
+  if (pwm_duty_pc7_pct >= 100U) {
+    ccr2 = period + 1U;
+  } else {
+    ccr2 = (uint32_t) (((uint64_t)(period + 1U) * (uint64_t)pwm_duty_pc7_pct + 50ULL) / 100ULL);
+  }
+  if (ccr1 > (period + 1U)) ccr1 = period + 1U;
+  if (ccr2 > (period + 1U)) ccr2 = period + 1U;
+
+  TIM3->PSC = presc;
+  TIM3->ARR = period;
+  TIM3->CCR1 = ccr1;
+  TIM3->CCR2 = ccr2;
+
+  /* Configure PWM mode 1 on CH1 and CH2, enable preload */
+  /* Clear OC1M/OC1PE and OC2M/OC2PE bits first */
+  TIM3->CCMR1 &= ~((TIM_CCMR1_OC1M | TIM_CCMR1_OC1PE) | (TIM_CCMR1_OC2M | TIM_CCMR1_OC2PE));
+  /* Set PWM1 with preload for both channels */
+  TIM3->CCMR1 |= (TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE
+                | TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2M_2 | TIM_CCMR1_OC2PE);
+
+  /* Enable CH1/CH2 outputs, active high */
+  TIM3->CCER &= ~((TIM_CCER_CC1P | TIM_CCER_CC1NP) | (TIM_CCER_CC2P | TIM_CCER_CC2NP));
+  TIM3->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E);
+
+  /* Generate an update event to load registers */
+  TIM3->EGR = TIM_EGR_UG;
+
+  /* Enable counter */
+  TIM3->CR1 |= TIM_CR1_CEN;
+}
 
 /* USER CODE END 4 */
 
