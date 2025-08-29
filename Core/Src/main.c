@@ -152,11 +152,6 @@ int main(void)
       BspButtonState = BUTTON_RELEASED;
       /* -- Sample board code to toggle leds ---- */
       BSP_LED_Toggle(LED_GREEN);
-      HAL_Delay(150);
-      BSP_LED_Toggle(LED_GREEN); 
-      HAL_Delay(150);
-      BSP_LED_Toggle(LED_GREEN); 
-      HAL_Delay(150);
       /* ..... Perform your action ..... */
     }
 
