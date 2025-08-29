@@ -142,15 +142,22 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* Continuously sample raw button level for debugging/watch */
+    user_button_raw = (BSP_PB_GetState(BUTTON_USER) == BUTTON_PRESSED) ? 1U : 0U;
 
     /* -- Sample board code for User push-button in interrupt mode ---- */
     if (BspButtonState == BUTTON_PRESSED)
     {
       /* Update button state */
       BspButtonState = BUTTON_RELEASED;
-      /* -- Sample board code to toggle leds ---- */
+
+      /* Step PC7 PWM duty by +10%: 10,20,...,90,0,10,... */
+      uint32_t next_step = ((pwm_duty_pc7_pct / 10U) + 1U) % 10U; /* 0..9 */
+      pwm_duty_pc7_pct = next_step * 10U;
+      pwm_pc7_set_duty_pct(pwm_duty_pc7_pct);
+
+      /* Optional visual feedback on on-board LED */
       BSP_LED_Toggle(LED_GREEN);
-      /* ..... Perform your action ..... */
     }
 
     /* USER CODE END WHILE */
