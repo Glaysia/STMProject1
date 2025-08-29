@@ -53,6 +53,9 @@ volatile uint32_t pwm_freq_hz = 1000000U;    /* shared frequency (Hz) */
 volatile uint32_t pwm_duty_pc6_pct = 15U;   /* PC6 duty (0..100 %) */
 volatile uint32_t pwm_duty_pc7_pct = 40U;   /* PC7 duty (0..100 %) */
 
+/* Mirror of USER button raw level for debugger watch (0=released, 1=pressed) */
+volatile uint32_t user_button_raw = 0U;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -139,6 +142,9 @@ int main(void)
   while (1)
   {
 
+    /* Continuously sample raw button level for debugging/watch */
+    user_button_raw = (BSP_PB_GetState(BUTTON_USER) == BUTTON_PRESSED) ? 1U : 0U;
+
     /* -- Sample board code for User push-button in interrupt mode ---- */
     if (BspButtonState == BUTTON_PRESSED)
     {
@@ -146,6 +152,11 @@ int main(void)
       BspButtonState = BUTTON_RELEASED;
       /* -- Sample board code to toggle leds ---- */
       BSP_LED_Toggle(LED_GREEN);
+      HAL_Delay(150);
+      BSP_LED_Toggle(LED_GREEN); 
+      HAL_Delay(150);
+      BSP_LED_Toggle(LED_GREEN); 
+      HAL_Delay(150);
       /* ..... Perform your action ..... */
     }
 
