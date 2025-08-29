@@ -49,7 +49,7 @@ CRC_HandleTypeDef hcrc;
 
 /* USER CODE BEGIN PV */
 /* TIM3 PWM on PC6 (CH1) & PC7 (CH2) - shared frequency, per-channel duty */
-volatile uint32_t pwm_freq_hz = 1000000U;    /* shared frequency (Hz) */
+volatile uint32_t pwm_freq_hz = 6780000U;    /* shared frequency (Hz) */
 volatile uint32_t pwm_duty_pc6_pct = 15U;   /* PC6 duty (0..100 %) */
 volatile uint32_t pwm_duty_pc7_pct = 40U;   /* PC7 duty (0..100 %) */
 
@@ -65,6 +65,7 @@ static void MX_CRC_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
 static void MX_TIM3_PWM_PC7_Init(void);
+static void pwm_pc7_set_duty_pct(uint32_t duty_pct);
 
 /* USER CODE END PFP */
 
@@ -150,9 +151,14 @@ int main(void)
     {
       /* Update button state */
       BspButtonState = BUTTON_RELEASED;
-      /* -- Sample board code to toggle leds ---- */
+
+      /* Step PC7 PWM duty by +10%: 10,20,...,90,0,10,... */
+      uint32_t next_step = ((pwm_duty_pc7_pct / 10U) + 1U) % 10U; /* 0..9 */
+      pwm_duty_pc7_pct = next_step * 10U;
+      pwm_pc7_set_duty_pct(pwm_duty_pc7_pct);
+
+      /* Optional visual feedback on on-board LED */
       BSP_LED_Toggle(LED_GREEN);
-      /* ..... Perform your action ..... */
     }
 
     /* USER CODE END WHILE */
@@ -173,18 +179,26 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE0);
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV2;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_CSI;
+  RCC_OscInitStruct.CSIState = RCC_CSI_ON;
+  RCC_OscInitStruct.CSICalibrationValue = RCC_CSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLL1_SOURCE_CSI;
+  RCC_OscInitStruct.PLL.PLLM = 1;
+  RCC_OscInitStruct.PLL.PLLN = 125;
+  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1_VCIRANGE_2;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1_VCORANGE_WIDE;
+  RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -195,20 +209,20 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_PCLK3;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Configure the programming delay
   */
-  __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_0);
+  __HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
 }
 
 /**
@@ -393,6 +407,22 @@ static void MX_TIM3_PWM_PC7_Init(void)
 
   /* Enable counter */
   TIM3->CR1 |= TIM_CR1_CEN;
+}
+
+/* Update only PC7 (TIM3_CH2) PWM duty in percent (0..100) using current ARR */
+static void pwm_pc7_set_duty_pct(uint32_t duty_pct)
+{
+  if (duty_pct >= 100U) {
+    /* 100% duty: CCR = ARR + 1 */
+    TIM3->CCR2 = TIM3->ARR + 1U;
+  } else {
+    uint32_t period_plus_1 = TIM3->ARR + 1U;
+    uint32_t ccr = (uint32_t)(((uint64_t)period_plus_1 * (uint64_t)duty_pct + 50ULL) / 100ULL);
+    if (ccr > period_plus_1) ccr = period_plus_1;
+    TIM3->CCR2 = ccr;
+  }
+  /* Generate update to latch CCR preload */
+  TIM3->EGR = TIM_EGR_UG;
 }
 
 /* USER CODE END 4 */
